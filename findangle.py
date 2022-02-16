@@ -1,25 +1,39 @@
 import numpy as np
 
-phi = 0
-theta = np.pi
+phi = np.pi/2
+theta = 0
 psi = 0
 
-Rx = np.array([[1,0,0],[0,np.cos(phi),-np.sin(phi)],[0,np.sin(phi),np.cos(phi)]])
-Ry = np.array([[np.cos(theta),0,np.sin(theta)],[0,1,0],[-np.sin(theta),0,np.cos(theta)]])
-Rz = np.array([[np.cos(psi),-np.sin(psi),0],[np.sin(psi),np.cos(psi),0],[0,0,1]])
+def rotmatrix(x,y,z):
+    Rx = np.array([[1,0,0],[0,np.cos(x),-np.sin(x)],[0,np.sin(x),np.cos(x)]])
+    Ry = np.array([[np.cos(y),0,np.sin(y)],[0,1,0],[-np.sin(y),0,np.cos(y)]])
+    Rz = np.array([[np.cos(z),-np.sin(z),0],[np.sin(z),np.cos(z),0],[0,0,1]])
+    rotmat=np.matmul(np.matmul(Rx,Ry),Rz)
+    return rotmat
 
-rotmat=np.matmul(np.matmul(Rx,Ry),Rz)
+def findaxisangle(rotmat):
+    rotmateig = np.linalg.eig(rotmat)
 
-rotmateig = np.linalg.eig(rotmat)
+    for i in range(len(rotmateig[0])):
+        if np.isreal(rotmateig[0][i]):
+            j=i
+            break
 
-j=0
+    rmeigvec = rotmateig[1]
+    rotax = rmeigvec[:,2]
+    rotax = rotax.real
 
-for i in rotmateig[0]:
-    if np.isreal(i):
-        j=i
-        break
+    v = rotmateig[0][j-1]
+    a = np.real(v)
+    b = np.imag(v)
 
-rmeigvec = rotmateig[1]
-rotax = rmeigvec[:,2]
+    rotan = np.arctan2(b,a)
+    
+    return rotax,rotan
+
+rotmat = rotmatrix(phi,theta,psi)
+
+rotax,rotan = findaxisangle(rotmat)
 
 print(rotax)
+print((180*rotan)/np.pi)
