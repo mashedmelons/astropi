@@ -16,7 +16,7 @@ def rotate(x,y, alpha,r=None):
 
 x=0.1
 y=0
-a=0.5
+a=0.4
 b=0
 rota=0.1
 for i in range(1000):
