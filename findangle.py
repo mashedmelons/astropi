@@ -1,4 +1,18 @@
 import numpy as np
+import datetime as dt
+
+def modfromfloat(num,m):
+    return num-(int(num/m)*m)
+
+def simsensorpry(r0=np.pi, p0=0., y0=1.5*np.pi):
+    tt = dt.datetime.now().microsecond%100
+    return {"roll": modfromfloat(r0+tt+np.random.randint(-3,3),2*np.pi),
+    "pitch": modfromfloat(p0+tt+np.random.randint(-3,3),2*np.pi),
+    "yaw": modfromfloat(y0+tt+np.random.randint(-3,3),2*np.pi)}
+
+def moved(x0,y0,z0,x1,y1,z1):
+    nx,ny,nz = x1-x0,y1-y0,z1-z0
+
 
 phi = np.pi/2
 theta = 0

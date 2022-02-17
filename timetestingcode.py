@@ -14,13 +14,13 @@ data = pd.DataFrame({"ts": np.zeros((N,)),
 
 for i in range(N):
     t =  dt.datetime.now().time()
-    pitch,roll,yaw = (1,2,3)
+    pitch,roll,yaw = np.random.random(3)
     data.loc[i,:] = [t,pitch,roll,yaw]
     if (i%10000==0):
         print(dt.datetime.now().time(), i)
 
 print(dt.datetime.now().time(), "Writing pickle...")
-data.to_pickle("data/datalog.pkl")
+data.to_pickle("data/datalog.zip")
 print(dt.datetime.now().time(), "Writing csv...")
 data.to_csv("data/datacsv.csv")
 print(dt.datetime.now().time(), "all done.")
