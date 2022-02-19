@@ -1,75 +1,113 @@
-from gettext import find
 import numpy as np
 import datetime as dt
 import pandas as pd
 #from orbit import ISS
 
-#func that does % but for float
-def modfromfloat(num,m):
+#TODO write logging
+#TODO error catching
+
+#division remainder for float
+def modfromfloat(num:float, m:float):
     return num-(int(num/m)*m)
 
-#whilst our rpi is out of business, use this for roll pitch yaw sensor sim
-def simsensorpry(r0=np.pi, p0=0., y0=1.5*np.pi):
+#function to simulate roll pitch and yaw in radian sensor reading
+#to be replaced by #TODO find name of sensehat func
+def simsensorrpy(r0:float=np.pi, p0:float=0., y0:float=1.5*np.pi):
     tt = dt.datetime.now().microsecond%100
     return {"roll": modfromfloat(r0+tt+np.random.randint(-3,3),2*np.pi),
     "pitch": modfromfloat(p0+tt+np.random.randint(-3,3),2*np.pi),
     "yaw": modfromfloat(y0+tt+np.random.randint(-3,3),2*np.pi)}
 
-#calculates how much each angle changed
-def moved(x0,y0,z0,x1,y1,z1):
-    nx,ny,nz = x1-x0,y1-y0,z1-z0
+#calculate how much each angle changed
+def moved(x0:float,y0:float,z0:float,x1:float,y1:float,z1:float):
+    nx,ny,nz = (x1-x0,y1-y0,z1-z0)
     return nx,ny,nz
 
-#converts roll pitch yaw into a rotation matrix
-def rotmatrix(x,y,z):
+#convert roll pitch yaw to a rotation matrix
+#x: pitch
+#y: roll
+#z: yaw
+#returns a 3x3 numpy matrix
+def rotmatrix(x: float, y: float, z: float):
     Rx = np.array([[1,0,0],[0,np.cos(x),-np.sin(x)],[0,np.sin(x),np.cos(x)]])
     Ry = np.array([[np.cos(y),0,np.sin(y)],[0,1,0],[-np.sin(y),0,np.cos(y)]])
     Rz = np.array([[np.cos(z),-np.sin(z),0],[np.sin(z),np.cos(z),0],[0,0,1]])
     rotmat=np.matmul(np.matmul(Rz,Ry),Rx)
     return rotmat
 
-#finds axis and angle of rotation from a rotation matrix
+#finds axi and angle of rotation given a 3x3 rotation matrix
 def findaxisangle(rotmat):
+
+    #eigenvalues and eignevectors
     rotmateig = np.linalg.eig(rotmat)
 
-    for i in range(len(rotmateig[0])):
+    #find which eignevalue is real
+    #at least one will be, so j will be defined after this loop
+    for i in range(len(rotmateig[0])): #for each eigenvalue
         if np.isreal(rotmateig[0][i]):
             j=i
             break
 
-    rmeigvec = rotmateig[1]
-    rotax = rmeigvec[:,2]
-    rotax = rotax.real
+    rotmateigvec = rotmateig[1]  #matrix of eigenvectors
+    rotax = rotmateigvec[:,j] #this is the rotation axis - it corresponds to a real eignevalue=1
+    rotax = rotax.real #removes complex part (which would be 0*j)
 
-    v = rotmateig[0][j-1]
+    v = rotmateig[0][j-1] #takes one of the other (complex) eigen values, unless rotmat is an identity matrix #TODO make if statement for identity
     a = np.real(v)
     b = np.imag(v)
 
-    rotan = np.arctan2(b,a)
+    rotan = np.arctan2(b,a)#complex eignevalues will have the form cos(phi) + i sin(phi) so take the arctan2(sin,cos)
     
     return rotax,rotan
 
-N = 1000
-i=0
-tstart = dt.datetime.now()
-t = dt.timedelta(minutes=1)
-tend = tstart+t
 
-data = pd.DataFrame({"ts": np.zeros((N,)), 
-                     "roll": np.zeros((N,)),
-                     "pitch": np.zeros((N,)),
-                     "yaw": np.zeros((N,)),
-                     "axis":np.zeros((N,)),        #reserve space for data storage
-                     "angle":np.zeros((N,))
+#initialize the variables
+tstart = dt.datetime.now() #start time
+N = 1000 #n of readings to take
+i=0 #counter of readings
+saveN = 250 #n of readings to save in single save file
+tdelta = dt.timedelta(minutes=1) #how much time to run program for
+tend = tstart+tdelta #finish time for program
+
+data = pd.DataFrame({"ts": np.zeros((saveN,)), 
+                     "roll": np.zeros((saveN,)),
+                     "pitch": np.zeros((saveN,)),
+                     "yaw": np.zeros((saveN,)),
+                     "axisX":np.zeros((saveN,)),        #reserve space for data storage
+                     "axisY":np.zeros((saveN,)),
+                     "axisZ":np.zeros((saveN,)),
+                     "angle":np.zeros((saveN,))
                      })
 
-ox,oy,oz = simsensorpry()
-tnow = tstart
-while tnow<tend:
-    roll,pitch,yaw=simsensorpry()
-    phi,theta,psi=moved(roll,pitch,yaw,ox,oy,oz)
-    ax, an = findaxisangle(phi,theta,psi)
-    data.loc[i,:] = [t,roll,pitch,yaw,ax,an]
-    ox,oy,oz = roll,pitch,yaw
+o = simsensorrpy() #take sensor reading
+oldroll,oldpitch,oldyaw=o["roll"], o["pitch"], o["yaw"]
+done = False
+tnow = dt.datetime.now()
 
-print(data)
+while not done:
+    o = simsensorrpy() #take sensor reading
+    roll,pitch,yaw=o["roll"], o["pitch"], o["yaw"]
+    phi,theta,psi=moved(roll,pitch,yaw,oldroll,oldpitch,oldyaw)
+    ax, an = findaxisangle(rotmatrix(phi,theta,psi))
+    data.loc[i%saveN,:] = [tnow,roll,pitch,yaw,ax[0],ax[1],ax[2],an] #put data into dataframe
+    oldroll,oldpitch,oldyaw = roll,pitch,yaw #save old roll pitch yaw for next step
+
+    if (i+1)%saveN==0: #if time to save file
+        filen = (i+1)//saveN #save file label
+        data.to_pickle("data/readings{:3d}.zip".format(filen))
+        data = pd.DataFrame({"ts": np.zeros((saveN,)), 
+                     "roll": np.zeros((saveN,)),
+                     "pitch": np.zeros((saveN,)),
+                     "yaw": np.zeros((saveN,)),
+                     "axisX":np.zeros((saveN,)),        #reserve space for data storage
+                     "axisY":np.zeros((saveN,)),
+                     "axisZ":np.zeros((saveN,)),
+                     "angle":np.zeros((saveN,))
+                     })
+
+    tnow = dt.datetime.now()
+    i+=1
+    done = (tnow>=tend) or (i>=N) #loop exit condition
+
+if i<N: #if exit was due to time
+    data.to_pickle("data/readings{:3d}.zip".format((i//saveN)+1)) #save last readings
