@@ -3,7 +3,6 @@ import datetime as dt
 import pandas as pd
 #from orbit import ISS
 
-#TODO write logging
 #TODO error catching
 
 #division remainder for float
@@ -52,7 +51,7 @@ def findaxisangle(rotmat):
     rotax = rotmateigvec[:,j] #this is the rotation axis - it corresponds to a real eignevalue=1
     rotax = rotax.real #removes complex part (which would be 0*j)
 
-    v = rotmateig[0][j-1] #takes one of the other (complex) eigen values, unless rotmat is an identity matrix #TODO make if statement for identity
+    v = rotmateig[0][j-1] #takes one of the other eigen values, which will be complex unlex rotmat is identity
     a = np.real(v)
     b = np.imag(v)
 
@@ -84,6 +83,7 @@ oldroll,oldpitch,oldyaw=o["roll"], o["pitch"], o["yaw"]
 done = False
 tnow = dt.datetime.now()
 
+print(tnow,"entering loop...")
 while not done:
     o = simsensorrpy() #take sensor reading
     roll,pitch,yaw=o["roll"], o["pitch"], o["yaw"]
@@ -92,9 +92,9 @@ while not done:
     data.loc[i%saveN,:] = [tnow,roll,pitch,yaw,ax[0],ax[1],ax[2],an] #put data into dataframe
     oldroll,oldpitch,oldyaw = roll,pitch,yaw #save old roll pitch yaw for next step
 
-    if (i+1)%saveN==0: #if time to save file
-        filen = (i+1)//saveN #save file label
-        data.to_pickle("data/readings{:3d}.zip".format(filen))
+    if (i+1)%saveN==0: #if time to save file 
+        filename = "data/readings{:03d}.zip".format((i+1)//saveN) #save file label
+        data.to_pickle(filename)
         data = pd.DataFrame({"ts": np.zeros((saveN,)), 
                      "roll": np.zeros((saveN,)),
                      "pitch": np.zeros((saveN,)),
@@ -104,6 +104,7 @@ while not done:
                      "axisZ":np.zeros((saveN,)),
                      "angle":np.zeros((saveN,))
                      })
+        print(tnow,f"saved file {filename}")
 
     tnow = dt.datetime.now()
     i+=1
@@ -111,3 +112,5 @@ while not done:
 
 if i<N: #if exit was due to time
     data.to_pickle("data/readings{:3d}.zip".format((i//saveN)+1)) #save last readings
+
+print("done.")
