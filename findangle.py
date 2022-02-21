@@ -1,16 +1,19 @@
 import numpy as np
 import datetime as dt
 import pandas as pd
+from logzero import logger,logfile
 #from orbit import ISS
 
-#TODO error catching
+#TODO ORBIT LIBRARY!!!
+#TODO write rpi version
+
+logfile("data/logfile.log")
 
 #division remainder for float
 def modfromfloat(num:float, m:float):
     return num-(int(num/m)*m)
 
 #function to simulate roll pitch and yaw in radian sensor reading
-#to be replaced by #TODO find name of sensehat func
 def simsensorrpy(r0:float=np.pi, p0:float=0., y0:float=1.5*np.pi):
     tt = dt.datetime.now().microsecond%100
     return {"roll": modfromfloat(r0+tt+np.random.randint(-3,3),2*np.pi),
@@ -23,8 +26,8 @@ def moved(x0:float,y0:float,z0:float,x1:float,y1:float,z1:float):
     return nx,ny,nz
 
 #convert roll pitch yaw to a rotation matrix
-#x: pitch
-#y: roll
+#x: roll
+#y: pitch
 #z: yaw
 #returns a 3x3 numpy matrix
 def rotmatrix(x: float, y: float, z: float):
@@ -35,7 +38,7 @@ def rotmatrix(x: float, y: float, z: float):
     return rotmat
 
 #finds axi and angle of rotation given a 3x3 rotation matrix
-def findaxisangle(rotmat):
+def findaxisangle(rotmat:np.array):
 
     #eigenvalues and eignevectors
     rotmateig = np.linalg.eig(rotmat)
@@ -68,43 +71,52 @@ saveN = 250 #n of readings to save in single save file
 tdelta = dt.timedelta(minutes=1) #how much time to run program for
 tend = tstart+tdelta #finish time for program
 
-data = pd.DataFrame({"ts": np.zeros((saveN,)), 
-                     "roll": np.zeros((saveN,)),
-                     "pitch": np.zeros((saveN,)),
-                     "yaw": np.zeros((saveN,)),
-                     "axisX":np.zeros((saveN,)),        #reserve space for data storage
-                     "axisY":np.zeros((saveN,)),
-                     "axisZ":np.zeros((saveN,)),
-                     "angle":np.zeros((saveN,))
+data = pd.DataFrame({"ts": np.full(saveN,-1), 
+                     "roll": np.full(saveN,-1),
+                     "pitch": np.full(saveN,-1),
+                     "yaw": np.full(saveN,-1),
+                     "axisX":np.full(saveN,-1),        #reserve space for data storage
+                     "axisY":np.full(saveN,-1),
+                     "axisZ":np.full(saveN,-1),
+                     "angle":np.full(saveN,-1)
                      })
 
-o = simsensorrpy() #take sensor reading
+try:
+    o = simsensorrpy() #take sensor reading
+except Exception as e:
+    logger.error(f'{e.__class__.__name__}: {e}')
+    o = (0.,0.,0.)
 oldroll,oldpitch,oldyaw=o["roll"], o["pitch"], o["yaw"]
 done = False
 tnow = dt.datetime.now()
 
-print(tnow,"entering loop...")
+logger.info("entering loop...")
 while not done:
-    o = simsensorrpy() #take sensor reading
-    roll,pitch,yaw=o["roll"], o["pitch"], o["yaw"]
-    phi,theta,psi=moved(roll,pitch,yaw,oldroll,oldpitch,oldyaw)
-    ax, an = findaxisangle(rotmatrix(phi,theta,psi))
-    data.loc[i%saveN,:] = [tnow,roll,pitch,yaw,ax[0],ax[1],ax[2],an] #put data into dataframe
-    oldroll,oldpitch,oldyaw = roll,pitch,yaw #save old roll pitch yaw for next step
+    try:
+        o = simsensorrpy() #take sensor reading
+        roll,pitch,yaw=o["roll"], o["pitch"], o["yaw"]
+        phi,theta,psi=moved(roll,pitch,yaw,oldroll,oldpitch,oldyaw)
+        ax, an = findaxisangle(rotmatrix(phi,theta,psi))
+        data.loc[i%saveN,:] = [tnow,roll,pitch,yaw,ax[0],ax[1],ax[2],an] #put data into dataframe
+        oldroll,oldpitch,oldyaw = roll,pitch,yaw #save old roll pitch yaw for next step
 
-    if (i+1)%saveN==0: #if time to save file 
-        filename = "data/readings{:03d}.zip".format((i+1)//saveN) #save file label
-        data.to_pickle(filename)
-        data = pd.DataFrame({"ts": np.zeros((saveN,)), 
-                     "roll": np.zeros((saveN,)),
-                     "pitch": np.zeros((saveN,)),
-                     "yaw": np.zeros((saveN,)),
-                     "axisX":np.zeros((saveN,)),        #reserve space for data storage
-                     "axisY":np.zeros((saveN,)),
-                     "axisZ":np.zeros((saveN,)),
-                     "angle":np.zeros((saveN,))
+        if (i+1)%saveN==0: #if time to save file 
+            filename = "data/readings{:03d}.zip".format((i+1)//saveN) #save file label
+            data.to_pickle(filename)
+            data = pd.DataFrame({"ts": np.full(saveN,-1), 
+                     "roll": np.full(saveN,-1),
+                     "pitch": np.full(saveN,-1),
+                     "yaw": np.full(saveN,-1),
+                     "axisX":np.full(saveN,-1),        #reserve space for data storage
+                     "axisY":np.full(saveN,-1),
+                     "axisZ":np.full(saveN,-1),
+                     "angle":np.full(saveN,-1)
                      })
-        print(tnow,f"saved file {filename}")
+
+
+            logger.info(f"saved file {filename}")
+    except Exception as e:
+        logger.error(f'{e.__class__.__name__}: {e}')
 
     tnow = dt.datetime.now()
     i+=1
@@ -113,4 +125,4 @@ while not done:
 if i<N: #if exit was due to time
     data.to_pickle("data/readings{:3d}.zip".format((i//saveN)+1)) #save last readings
 
-print("done.")
+logger.info("done.")
