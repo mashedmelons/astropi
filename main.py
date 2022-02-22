@@ -3,6 +3,7 @@ import datetime as dt
 import pandas as pd
 from logzero import logger,logfile
 #from orbit import ISS
+#from skyfield.api import load
 
 #TODO ORBIT LIBRARY!!!
 #TODO write rpi version
@@ -37,9 +38,8 @@ def rotmatrix(x: float, y: float, z: float):
     rotmat=np.matmul(np.matmul(Rz,Ry),Rx)
     return rotmat
 
-#finds axi and angle of rotation given a 3x3 rotation matrix
+#finds axis and angle of rotation given a 3x3 rotation matrix
 def findaxisangle(rotmat:np.array):
-
     #eigenvalues and eignevectors
     rotmateig = np.linalg.eig(rotmat)
 
@@ -65,20 +65,21 @@ def findaxisangle(rotmat:np.array):
 
 #initialize the variables
 tstart = dt.datetime.now() #start time
-N = 1000 #n of readings to take
+N = 20 #n of readings to take
 i=0 #counter of readings
-saveN = 250 #n of readings to save in single save file
+saveN = 5 #n of readings to save in single save file
 tdelta = dt.timedelta(minutes=1) #how much time to run program for
 tend = tstart+tdelta #finish time for program
 
-data = pd.DataFrame({"ts": np.full(saveN,-1), 
-                     "roll": np.full(saveN,-1),
-                     "pitch": np.full(saveN,-1),
-                     "yaw": np.full(saveN,-1),
-                     "axisX":np.full(saveN,-1),        #reserve space for data storage
-                     "axisY":np.full(saveN,-1),
-                     "axisZ":np.full(saveN,-1),
-                     "angle":np.full(saveN,-1)
+data = pd.DataFrame({"ts": np.full(saveN,np.nan), 
+                     "roll": np.full(saveN,np.nan),
+                     "pitch": np.full(saveN,np.nan),
+                     "yaw": np.full(saveN,np.nan),
+                     "axisX":np.full(saveN,np.nan),        #reserve space for data storage
+                     "axisY":np.full(saveN,np.nan),
+                     "axisZ":np.full(saveN,np.nan),
+                     "angle":np.full(saveN,np.nan),
+                     "elevation":np.full(saveN,np.nan)
                      })
 
 try:
@@ -95,29 +96,45 @@ while not done:
     try:
         o = simsensorrpy() #take sensor reading
         roll,pitch,yaw=o["roll"], o["pitch"], o["yaw"]
-        phi,theta,psi=moved(roll,pitch,yaw,oldroll,oldpitch,oldyaw)
-        ax, an = findaxisangle(rotmatrix(phi,theta,psi))
-        data.loc[i%saveN,:] = [tnow,roll,pitch,yaw,ax[0],ax[1],ax[2],an] #put data into dataframe
+        try:
+            phi,theta,psi=moved(roll,pitch,yaw,oldroll,oldpitch,oldyaw)
+            ax, an = findaxisangle(rotmatrix(phi,theta,psi))
+        except Exception as e:
+            logger.error(f'{e.__class__.__name__}: {e}\nstep {i}')
+            ax = np.full()
+            an = np.nan
+        try:
+            location = ISS.coordinates()
+            elevation = location.elevation.km
+        except Exception as e:
+            logger.error(f'{e.__class__.__name__}: {e}\nstep {i}')
+            elevation = np.nan
+
+        data.loc[i%saveN,:] = [tnow,roll,pitch,yaw,ax[0],ax[1],ax[2],an,elevation] #put data into dataframe
         oldroll,oldpitch,oldyaw = roll,pitch,yaw #save old roll pitch yaw for next step
 
-        if (i+1)%saveN==0: #if time to save file 
-            filename = "data/readings{:03d}.zip".format((i+1)//saveN) #save file label
-            data.to_pickle(filename)
-            data = pd.DataFrame({"ts": np.full(saveN,-1), 
-                     "roll": np.full(saveN,-1),
-                     "pitch": np.full(saveN,-1),
-                     "yaw": np.full(saveN,-1),
-                     "axisX":np.full(saveN,-1),        #reserve space for data storage
-                     "axisY":np.full(saveN,-1),
-                     "axisZ":np.full(saveN,-1),
-                     "angle":np.full(saveN,-1)
+        try:
+            if (i+1)%saveN==0: #if time to save file 
+                filename = "data/readings{:03d}.zip".format((i+1)//saveN) #save file label
+                data.to_pickle(filename)
+                data = pd.DataFrame({"ts": np.full(saveN,np.nan), 
+                     "roll": np.full(saveN,np.nan),
+                     "pitch": np.full(saveN,np.nan),
+                     "yaw": np.full(saveN,np.nan),
+                     "axisX":np.full(saveN,np.nan),        #reserve space for data storage
+                     "axisY":np.full(saveN,np.nan),
+                     "axisZ":np.full(saveN,np.nan),
+                     "angle":np.full(saveN,np.nan),
+                     "elevation":np.full(saveN,np.nan)
                      })
+                logger.info(f"saved file {filename}")
+        except Exception as e:
+            logger.error(f'{e.__class__.__name__}: {e}\nstep {i}')
 
 
-            logger.info(f"saved file {filename}")
     except Exception as e:
-        logger.error(f'{e.__class__.__name__}: {e}')
-
+        logger.error(f'{e.__class__.__name__}: {e}\nstep {i}')
+        
     tnow = dt.datetime.now()
     i+=1
     done = (tnow>=tend) or (i>=N) #loop exit condition
